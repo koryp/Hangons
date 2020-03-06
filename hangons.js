@@ -68,77 +68,93 @@ function parseData()
     var progress = 0;
     for (var i=0; i < jsonData.conversations.length; i++)
     {
+        let thisConversation = jsonData.conversations[i];
         var conversation = {};
         conversation.chatName = "";
         conversation.participants = getParticipants(i);
         conversation.messages = [];
 
-        for(var j=0; j < jsonData.conversations[i].events.length; j++)
+        for(var j=0; j < thisConversation.events.length; j++)
         {
+            let thisEvent = thisConversation.events[j];
             var message = {};
             message.sender = {};
-            message.sender.name = getName(jsonData.conversations[i].events[j].sender_id.gaia_id, conversation.participants);
-            message.sender.id = jsonData.conversations[i].events[j].sender_id.gaia_id;
-            message.unixtime = Math.floor(jsonData.conversations[i].events[j].timestamp/1000000);
-            if(jsonData.conversations[i].events[j].chat_message !== undefined)
+            message.sender.name = getName(thisEvent.sender_id.gaia_id, conversation.participants);
+            message.sender.id = thisEvent.sender_id.gaia_id;
+            message.unixtime = Math.floor(thisEvent.timestamp/1000000);
+            if(thisEvent.chat_message !== undefined)
             {//if it's a message (normal hangouts, image...)
-                if (jsonData.conversations[i].events[j].chat_message.message_content.segment !== undefined)
+                let messageContent = thisEvent.chat_message.message_content;
+                if (messageContent.segment !== undefined)
                 {//if it's a normal hangouts message
 
                     var content ="";
-                    for (var k = 0; k < jsonData.conversations[i].events[j].chat_message.message_content.segment.length; k++)
+                    for (var k = 0; k < messageContent.segment.length; k++)
                     {
-                        content += jsonData.conversations[i].events[j].chat_message.message_content.segment[k].text;
+                        content += messageContent.segment[k].text;
                     }
                     message.content = content;
                 }
 
-                else if (jsonData.conversations[i].events[j].chat_message.message_content.attachment !== undefined)
+                else if (messageContent.attachment !== undefined)
                 {
-                    for (var k = 0; k < jsonData.conversations[i].events[j].chat_message.message_content.attachment.length; k++)
+                    for (var k = 0; k < messageContent.attachment.length; k++)
                     {
+                        console.log( messageContent );
                         //image
-                        if (jsonData.conversations[i].events[j].chat_message.message_content.attachment[0].embed_item.type[0] == "PLUS_PHOTO")
-                            message.content = jsonData.conversations[i].events[j].chat_message.message_content.attachment[k].embed_item.plus_photo.url
+                        if (messageContent.attachment[0].embed_item.type[0] == "PLUS_PHOTO")
+                            message.content = '<img src="' + messageContent.attachment[k].embed_item.plus_photo.url + '" />';
                         //audio
-                        else if (jsonData.conversations[i].events[j].chat_message.message_content.attachment.type == "PLUS_AUDIO_V2")
-                            message.content = jsonData.conversations[i].events[j].chat_message.message_content.attachment[k].embed_item["embeds.PlusAudioV2.plus_audio_v2"].url
-                        else console.warn("Attachment detected that couldn't be parsed");
+                        else if (messageContent.attachment[0].embed_item.type[0] == "PLUS_AUDIO_V2")
+                            message.content = 'FIXME: ' + messageContent.attachment[k].embed_item.plus_audio_v2.url
+                        else if (messageContent.attachment.type == "PLUS_AUDIO_V2")
+                            message.content = 'FIXME: ' + messageContent.attachment[k].embed_item["embeds.PlusAudioV2.plus_audio_v2"].url
+                        else console.warn("Attachment detected that couldn't be parsed", { 'attachment': messageContent.attachment } );
                     }
                 }
 
                 else
                 {//if we don't recognise the format of the message
                     console.warn("%c Unknown format for conversation "+i+" message "+j+"", "background: #FF0000")
-                    console.dir(jsonData.conversations[i].events[j]);
+                    console.dir(thisEvent);
                     message.content = "Unknown format, unable to parse message "+j+" in conversation "+i;
                     document.getElementById("unknownMessageAlert").className = "row";
                 }
             }
-            else if (jsonData.conversations[i].events[j].conversation_rename)
+            else if (thisEvent.conversation_rename)
             {//else if it's renaming the group
-                message.content = "Changed group chat name to "+jsonData.conversations[i].events[j].conversation_rename.new_name;
+                message.content = "Changed group chat name to "+thisEvent.conversation_rename.new_name;
             }
-            else if (jsonData.conversations[i].events[j].hangout_event)
+            else if (thisEvent.hangout_event)
             {//else if it's a call using hangouts
-                if (jsonData.conversations[i].events[j].hangout_event.event_type === "START_HANGOUT")
+                if (thisEvent.hangout_event.event_type === "START_HANGOUT")
                 {
                     message.content = "Started a Hangout";
                 }
-                else if (jsonData.conversations[i].events[j].hangout_event.event_type === "END_HANGOUT")
+                else if (thisEvent.hangout_event.event_type === "END_HANGOUT")
                 {
                     message.content = "Ended a Hangout";
                 }
             }
+            else if (thisEvent.membership_change !== undefined)
+            {
+                let memberIds = thisEvent.membership_change.participant_id || [];
+                let members = [];
+                for (var k = 0; k < memberIds.length; k++)
+                {
+                    members.push( getName( memberIds[k].gaia_id, conversation.participants ) );
+                }
+                message.content = "Conersation membership change (" + thisEvent.membership_change.type + "): " + members.toString();
+            }
             else
-            {//if it's not a message or renaming the group
-               console.warn("%c Unknown format for conversation "+i+" message "+j+"", "background: #FF0000");
-               console.dir(jsonData.conversations[i].events[j]);
-               message.content = "Unknown format, unable to parse message "+j+" in conversation "+i;
-               document.getElementById("unknownMessageAlert").className = "row";
+            {//if it's not a message nor renaming the group
+                 console.warn("%c Unknown format for conversation "+i+" message "+j+"", "background: #FF0000");
+                 console.dir(thisEvent);
+                 message.content = "Unknown format, unable to parse message "+j+" in conversation "+i;
+                 document.getElementById("unknownMessageAlert").className = "row";
             }
             conversation.messages.push(message);
-            progress += ((1/jsonData.conversations.length)*(1/jsonData.conversations[i].events.length)*100);
+            progress += ((1/jsonData.conversations.length)*(1/thisConversation.events.length)*100);
             document.getElementById("parseBar").style.width = Math.floor(progress)+"%";
         }
         conversation.messages.sort(function(a, b)
@@ -158,18 +174,20 @@ function parseData()
 
 function getParticipants(index)
 {
+    let thisConversation = jsonData.conversations[index].conversation.conversation;
     var participants = [];
-    for (var i = 0; i < jsonData.conversations[index].conversation.conversation.participant_data.length; i++)
+    for (var i = 0; i < thisConversation.participant_data.length; i++)
     {
+        let thisParticipant = thisConversation.participant_data[i];
         var person = {};
-        person.id = jsonData.conversations[index].conversation.conversation.participant_data[i].id.gaia_id;
-        if (jsonData.conversations[index].conversation.conversation.participant_data[i].fallback_name !== undefined)
+        person.id = thisParticipant.id.gaia_id;
+        if (thisParticipant.fallback_name !== undefined)
         {
-            person.name = jsonData.conversations[index].conversation.conversation.participant_data[i].fallback_name;
+            person.name = thisParticipant.fallback_name;
         }
         else
         {
-            person.name = jsonData.conversations[index].conversation.conversation.participant_data[i].id.gaia_id;
+            person.name = thisParticipant.id.gaia_id;
         }
         participants.push(person);
     }
@@ -257,6 +275,7 @@ function toHtml()
         ".d{font-size: x-small;}"+"\r\n"+
         ".c{float:left;border-radius: 50%;width: 20px;height: 20px;background-color: #1AA260;color: white;text-align: center;}"+"\r\n"+
         ".nl{clear: both;float: left;display: block;position: relative;}"+"\r\n"+
+        "img{max-width: 50%;height: auto;}"+"\r\n"+
         "</style></head><body id='body'>";
         for (var j=0;j< simpleJson[i].messages.length; j++)
         {
